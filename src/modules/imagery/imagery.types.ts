@@ -26,13 +26,14 @@ export interface Job {
   jobId: string
   status: JobStatus
   result?: JobResult
-  imagery?: {
+  warning?: string
+  imagery?: Array<{
     id: string
     collection: string
     acquisitionDate: string | null
     cloudCover: number | null
     bbox: number[] | null
-  }
+  }>
 }
 
 export interface GeoJsonPolygon {
@@ -40,6 +41,15 @@ export interface GeoJsonPolygon {
   coordinates: number[][][]
 }
 
+export interface SearchParameters {
+  startDate: string
+  endDate: string
+  maxCloudCover: number
+}
+
 export interface EnhanceRequest {
   geometry: GeoJsonPolygon
+  startDate?: string
+  endDate?: string
+  maxCloudCover?: number
 }

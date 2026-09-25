@@ -52,16 +52,28 @@ export interface CopernicusImageryMetadata {
   bbox: number[] | null
 }
 
-export async function searchSentinel2L2A(bounds: BoundingBox): Promise<CopernicusImageryMetadata | null> {
+export async function searchSentinel2L2A(
+  bounds: BoundingBox,
+  searchParams?: import("./imagery.types").SearchParameters
+): Promise<CopernicusImageryMetadata[] | null> {
   const token = await getCopernicusAccessToken()
 
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(endDate.getDate() - env.copernicus.searchDays)
+  const maxCloud = searchParams?.maxCloudCover ?? env.copernicus.maxCloudCover
+  let startDateStr = searchParams?.startDate
+  let endDateStr = searchParams?.endDate
 
-  const bboxStr = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`
-  const timeStr = `${startDate.toISOString()}/${endDate.toISOString()}`
-  const maxCloud = env.copernicus.maxCloudCover
+  if (!startDateStr || !endDateStr) {
+    const endDate = new Date()
+    const startDate = new Date()
+    startDate.setDate(endDate.getDate() - env.copernicus.searchDays)
+    startDateStr = startDateStr || startDate.toISOString().split('T')[0]
+    endDateStr = endDateStr || endDate.toISOString().split('T')[0]
+  }
+
+  // Ensure they are full ISO strings for Copernicus
+  const startISO = new Date(startDateStr).toISOString()
+  const endISO = new Date(endDateStr).toISOString()
+  const timeStr = `${startISO}/${endISO}`
 
   if (
     bounds.west >= bounds.east ||
@@ -75,7 +87,7 @@ export async function searchSentinel2L2A(bounds: BoundingBox): Promise<Copernicu
     bbox: [bounds.west, bounds.south, bounds.east, bounds.north],
     datetime: timeStr,
     collections: ["sentinel-2-l2a"],
-    limit: 10
+    limit: 50
   }
 
   console.log("[Copernicus] Searching with bounds:", bounds)
@@ -126,23 +138,21 @@ export async function searchSentinel2L2A(bounds: BoundingBox): Promise<Copernicu
       return null
     }
 
-    const feature = matchingFeatures[0]
+    // Select up to 8 features
+    const selectedFeatures = matchingFeatures.slice(0, 8)
 
-    console.log("[Copernicus] Selected imagery:", {
-      id: feature.id,
-      collection: feature.collection,
-      acquisitionDate: feature.properties?.datetime ?? null,
-      cloudCover: feature.properties?.["eo:cloud_cover"] ?? null,
-      bbox: feature.bbox ?? null,
+    return selectedFeatures.map((feature: any) => {
+      const metadata = {
+        id: feature.id,
+        collection: feature.collection,
+        acquisitionDate: feature.properties?.datetime || null,
+        cloudCover: feature.properties?.["eo:cloud_cover"] ?? null,
+        bbox: feature.bbox || null
+      }
+
+      console.log("[Copernicus] Selected imagery:", metadata)
+      return metadata
     })
-
-    return {
-      id: feature.id,
-      collection: feature.collection,
-      acquisitionDate: feature.properties?.datetime || null,
-      cloudCover: feature.properties?.["eo:cloud_cover"] ?? null,
-      bbox: feature.bbox || null
-    }
   } catch (error) {
     console.error("[Copernicus] Catalog search failed:", error)
     throw new AppError(500, "Failed to search Copernicus Catalog")

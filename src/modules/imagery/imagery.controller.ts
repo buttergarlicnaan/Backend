@@ -54,7 +54,13 @@ export async function enhance(
       throw new AppError(400, "Request body must be an object")
     }
 
-    const { geometry } = body as Record<string, any>
+    // Handle frontend payload nesting data-flow regression without breaking API contract
+    let payload = body as Record<string, any>
+    if (payload.geometry && payload.geometry.type !== 'Polygon' && payload.geometry.geometry) {
+      payload = payload.geometry
+    }
+
+    const { geometry } = payload
 
     if (!geometry || geometry.type !== "Polygon" || !geometry.coordinates || !Array.isArray(geometry.coordinates) || geometry.coordinates.length === 0) {
       throw new AppError(400, "A valid Polygon geometry is required")
@@ -100,7 +106,33 @@ export async function enhance(
       throw new AppError(400, "Geometry must have a valid non-zero area")
     }
 
-    const job = createEnhancementJob(bounds)
+    const { startDate, endDate, maxCloudCover } = payload
+
+    if (startDate !== undefined) {
+      if (typeof startDate !== 'string' || Number.isNaN(Date.parse(startDate))) {
+        throw new AppError(400, "A valid startDate is required")
+      }
+    }
+
+    if (endDate !== undefined) {
+      if (typeof endDate !== 'string' || Number.isNaN(Date.parse(endDate))) {
+        throw new AppError(400, "A valid endDate is required")
+      }
+    }
+
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      throw new AppError(400, "startDate must be before or equal to endDate")
+    }
+
+    if (maxCloudCover !== undefined) {
+      if (typeof maxCloudCover !== 'number' || maxCloudCover < 0 || maxCloudCover > 100) {
+        throw new AppError(400, "A valid maxCloudCover between 0 and 100 is required")
+      }
+    }
+    
+    const searchParams = { startDate, endDate, maxCloudCover }
+
+    const job = createEnhancementJob(bounds, searchParams)
     res.status(202).json(job)
   } catch (error) {
     next(error)
