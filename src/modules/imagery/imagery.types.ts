@@ -26,6 +26,13 @@ export interface Job {
   jobId: string
   status: JobStatus
   result?: JobResult
+  imagery?: {
+    id: string
+    collection: string
+    acquisitionDate: string | null
+    cloudCover: number | null
+    bbox: number[] | null
+  }
 }
 
 export interface GeoJsonPolygon {

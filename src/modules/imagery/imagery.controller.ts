@@ -60,7 +60,47 @@ export async function enhance(
       throw new AppError(400, "A valid Polygon geometry is required")
     }
 
-    const job = createEnhancementJob()
+    const coords = geometry.coordinates[0]
+    
+    if (!Array.isArray(coords)) {
+      throw new AppError(400, "Invalid geometry coordinates format")
+    }
+
+    const lons: number[] = []
+    const lats: number[] = []
+
+    for (const c of coords) {
+      if (!Array.isArray(c) || c.length < 2) {
+        throw new AppError(400, "Each coordinate must be an array of [longitude, latitude]")
+      }
+
+      const lon = Number(c[0])
+      const lat = Number(c[1])
+
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        throw new AppError(400, `Coordinates must be finite numbers, got: [${c[0]}, ${c[1]}]`)
+      }
+
+      lons.push(lon)
+      lats.push(lat)
+    }
+
+    if (lons.length === 0) {
+      throw new AppError(400, "Coordinates array cannot be empty")
+    }
+
+    const bounds: BoundingBox = {
+      north: Math.max(...lats),
+      south: Math.min(...lats),
+      east: Math.max(...lons),
+      west: Math.min(...lons)
+    }
+
+    if (bounds.west >= bounds.east || bounds.south >= bounds.north) {
+      throw new AppError(400, "Geometry must have a valid non-zero area")
+    }
+
+    const job = createEnhancementJob(bounds)
     res.status(202).json(job)
   } catch (error) {
     next(error)
