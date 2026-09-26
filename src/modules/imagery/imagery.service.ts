@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 import { AppError } from "../../middleware/errorHandler"
 import type { BoundingBox, Job, JobStatus, SearchParameters } from "./imagery.types"
-import { searchSentinel2L2A } from "./copernicus.service"
+import { searchSentinel2L2A, downloadSentinel2TIFF } from "./copernicus.service"
 
 // In-memory job storage
 const jobs = new Map<string, Job>()
@@ -21,7 +21,7 @@ export function createEnhancementJob(bounds: BoundingBox, searchParams: SearchPa
   }
   jobs.set(jobId, job)
   
-  simulateJobProgression(jobId, bounds, searchParams)
+  processImageryJob(jobId, bounds, searchParams)
 
   return { jobId: job.jobId, status: job.status }
 }
@@ -30,57 +30,65 @@ export function getJobById(jobId: string): Job | undefined {
   return jobs.get(jobId)
 }
 
-async function simulateJobProgression(jobId: string, bounds: BoundingBox, searchParams: SearchParameters) {
+async function processImageryJob(jobId: string, bounds: BoundingBox, searchParams: SearchParameters) {
   const setStatus = (status: JobStatus) => {
     const job = jobs.get(jobId)
     if (job) job.status = status
   }
-  
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   try {
-    await delay(1000)
     setStatus("SEARCHING_IMAGERY")
 
-    const metadata = await searchSentinel2L2A(bounds, searchParams)
+    const rawMetadata = await searchSentinel2L2A(bounds, searchParams)
     
-    if (!metadata || metadata.length === 0) {
+    const job = jobs.get(jobId)
+    if (!job) return
+
+    if (!rawMetadata || rawMetadata.length === 0) {
+      job.warning = "No suitable Sentinel-2 imagery was found for the selected area, date range, and cloud-cover limit."
       setStatus("FAILED")
       return
     }
 
-    const job = jobs.get(jobId)
-    if (job) {
-      job.imagery = metadata
-      if (metadata.length < 8) {
-        job.warning = `Only ${metadata.length} suitable images were found within your selected date range and cloud-cover limit. Additional imagery may be selected outside your original criteria to provide the 8 images required by the enhancement model. This may affect enhancement quality.`
+    // Deduplicate by acquisition ID just in case
+    const uniqueMap = new Map<string, any>()
+    for (const m of rawMetadata) {
+      if (!uniqueMap.has(m.id)) {
+        uniqueMap.set(m.id, m)
       }
     }
+    const uniqueMetadata = Array.from(uniqueMap.values())
+    const uniqueCount = uniqueMetadata.length
 
-    await delay(2000)
+    job.uniqueAcquisitionCount = uniqueCount
+    job.modelInputCount = 8
+    job.duplicatedInputs = uniqueCount < 8
+    job.imagery = uniqueMetadata
+
+    if (uniqueCount < 8) {
+      job.warning = `Only ${uniqueCount} unique Sentinel-2 images were available within the selected criteria. Existing imagery was duplicated to provide the 8 inputs required by the enhancement model. Results may be less reliable because of limited source imagery.`
+      console.log(`[Copernicus] Duplicating imagery because fewer than 8 unique acquisitions were available.`)
+    }
+
+    // Prepare exactly 8 inputs deterministically
+    const selectedInputs = []
+    for (let i = 0; i < 8; i++) {
+      selectedInputs.push(uniqueMetadata[i % uniqueCount])
+    }
+
     setStatus("DOWNLOADING_IMAGERY")
 
-    await delay(2000)
-    setStatus("PREPARING_INPUT")
-
-    await delay(2000)
-    setStatus("ENHANCING")
-
-    await delay(2000)
-    setStatus("GENERATING_PREVIEW")
-
-    await delay(1000)
-    setStatus("COMPLETED")
-
-    const completedJob = jobs.get(jobId)
-    if (completedJob) {
-      completedJob.result = {
-        originalPreviewUrl: null,
-        enhancedPreviewUrl: null,
-        originalDownloadUrl: null,
-        enhancedDownloadUrl: null
+    let index = 1
+    for (const input of selectedInputs) {
+      if (input.acquisitionDate) {
+        console.log(`[Copernicus] Downloading TIFF ${index}/8: ${input.id}`)
+        await downloadSentinel2TIFF(bounds, input.acquisitionDate, jobId, index)
       }
+      index++
     }
+
+    setStatus("TIFFS_RETRIEVED")
+
   } catch (error) {
     console.error("[Imagery] Job failed:", error)
     setStatus("FAILED")

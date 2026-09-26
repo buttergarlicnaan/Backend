@@ -9,10 +9,7 @@ export type JobStatus =
   | "QUEUED"
   | "SEARCHING_IMAGERY"
   | "DOWNLOADING_IMAGERY"
-  | "PREPARING_INPUT"
-  | "ENHANCING"
-  | "GENERATING_PREVIEW"
-  | "COMPLETED"
+  | "TIFFS_RETRIEVED"
   | "FAILED"
 
 export interface JobResult {
@@ -27,6 +24,9 @@ export interface Job {
   status: JobStatus
   result?: JobResult
   warning?: string
+  uniqueAcquisitionCount?: number
+  modelInputCount?: number
+  duplicatedInputs?: boolean
   imagery?: Array<{
     id: string
     collection: string
