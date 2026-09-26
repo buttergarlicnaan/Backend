@@ -38,11 +38,23 @@ function readCopernicusConfig() {
   return { searchDays, maxCloudCover }
 }
 
+function readSupabaseConfig() {
+  const url = process.env.SUPABASE_URL?.trim()
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+
+  if (!url || !serviceRoleKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required in environment variables")
+  }
+
+  return { url, serviceRoleKey }
+}
+
 export const env = {
   port: readPort(),
   frontendOrigin: readFrontendOrigin(),
   copernicus: {
     ...readCopernicusCredentials(),
     ...readCopernicusConfig()
-  }
+  },
+  supabase: readSupabaseConfig()
 }

@@ -2,6 +2,9 @@ import { randomUUID } from "crypto"
 import { AppError } from "../../middleware/errorHandler"
 import type { BoundingBox, Job, JobStatus, SearchParameters } from "./imagery.types"
 import { searchSentinel2L2A, downloadSentinel2TIFF } from "./copernicus.service"
+import fs from "fs/promises"
+import path from "path"
+import { supabase } from "../storage/supabase.client"
 
 // In-memory job storage
 const jobs = new Map<string, Job>()
@@ -88,6 +91,47 @@ async function processImageryJob(jobId: string, bounds: BoundingBox, searchParam
     }
 
     setStatus("TIFFS_RETRIEVED")
+
+    setStatus("UPLOADING_INPUTS")
+    const inputStoragePaths: string[] = []
+
+    for (let i = 1; i <= 8; i++) {
+      const fileName = `${String(i).padStart(2, '0')}.tif`
+      const localFilePath = path.join(process.cwd(), "temporary", "jobs", jobId, "imagery", fileName)
+      
+      let fileBuffer: Buffer
+      try {
+        fileBuffer = await fs.readFile(localFilePath)
+      } catch (err: any) {
+        throw new Error(`Failed to read local TIFF file ${fileName}: ${err.message}`)
+      }
+
+      if (fileBuffer.length === 0) {
+        throw new Error(`Local TIFF file ${fileName} is empty`)
+      }
+
+      const storagePath = `jobs/${jobId}/${fileName}`
+
+      const { error } = await supabase.storage
+        .from("geoenhance-inputs")
+        .upload(storagePath, fileBuffer, {
+          contentType: "image/tiff",
+          upsert: true
+        })
+
+      if (error) {
+        throw new Error(`Failed to upload ${fileName} to Supabase: ${error.message}`)
+      }
+
+      inputStoragePaths.push(storagePath)
+      console.log(`[Supabase] Uploaded ${fileName} to geoenhance-inputs/${storagePath}`)
+    }
+
+    if (job) {
+      job.inputStoragePaths = inputStoragePaths
+    }
+
+    setStatus("INPUTS_UPLOADED")
 
   } catch (error) {
     console.error("[Imagery] Job failed:", error)

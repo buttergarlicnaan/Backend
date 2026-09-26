@@ -10,6 +10,8 @@ export type JobStatus =
   | "SEARCHING_IMAGERY"
   | "DOWNLOADING_IMAGERY"
   | "TIFFS_RETRIEVED"
+  | "UPLOADING_INPUTS"
+  | "INPUTS_UPLOADED"
   | "FAILED"
 
 export interface JobResult {
@@ -27,6 +29,7 @@ export interface Job {
   uniqueAcquisitionCount?: number
   modelInputCount?: number
   duplicatedInputs?: boolean
+  inputStoragePaths?: string[]
   imagery?: Array<{
     id: string
     collection: string
