@@ -1,7 +1,33 @@
 import type { NextFunction, Request, Response } from "express"
+import fs from "fs/promises"
+import path from "path"
 import { AppError } from "../../middleware/errorHandler"
 import { getImageryForBounds, createEnhancementJob, getJobById, completeJob } from "./imagery.service"
 import type { BoundingBox } from "./imagery.types"
+
+const SAFE_JOB_ID = /^[a-zA-Z0-9_-]+$/
+const ALLOWED_JOB_FILES = new Set([
+  "super_resolved.tif",
+  "super_resolved.png",
+  "uncertainty_map.tif",
+  "uncertainty_map.png",
+  "preview_01.png",
+  "preview_02.png",
+  "preview_03.png",
+  "preview_04.png",
+  "preview_05.png",
+  "preview_06.png",
+  "preview_07.png",
+  "preview_08.png",
+  "01.tif",
+  "02.tif",
+  "03.tif",
+  "04.tif",
+  "05.tif",
+  "06.tif",
+  "07.tif",
+  "08.tif",
+])
 
 function readCoordinate(value: unknown, name: string): number {
   if (typeof value !== "number" || Number.isNaN(value)) {
@@ -153,6 +179,42 @@ export async function getJob(
     }
 
     res.json(job)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function getJobFile(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { jobId, filename } = req.params
+
+    if (!SAFE_JOB_ID.test(jobId) || !ALLOWED_JOB_FILES.has(filename)) {
+      throw new AppError(400, "Invalid job file request")
+    }
+
+    const backendRoot = process.cwd()
+    const repoRoot = path.resolve(backendRoot, "..")
+    const candidates = [
+      path.join(backendRoot, "temporary", "jobs", jobId, "output", filename),
+      path.join(backendRoot, "temporary", "jobs", jobId, "imagery", filename),
+      path.join(repoRoot, "output", "jobs", jobId, filename),
+      path.join(repoRoot, "input", "jobs", jobId, filename),
+    ]
+
+    for (const candidate of candidates) {
+      try {
+        await fs.access(candidate)
+        return res.sendFile(path.resolve(candidate))
+      } catch {
+        // try next location
+      }
+    }
+
+    throw new AppError(404, `File ${filename} was not found for this job`)
   } catch (error) {
     next(error)
   }

@@ -10,6 +10,9 @@ const app = express()
 app.use(
   cors({
     origin: env.frontendOrigin,
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Range"],
+    exposedHeaders: ["Content-Length", "Content-Range", "Accept-Ranges"],
   })
 )
 app.use(express.json())

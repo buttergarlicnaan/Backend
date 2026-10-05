@@ -162,7 +162,10 @@ export async function searchSentinel2L2A(
 import fs from "fs/promises"
 import path from "path"
 
-// 19-Channel ML Input Contract: 12 L2A optical bands, 3 masks/cloud, 4 geometry angles
+// 17-Channel ML Input Contract (matches ML model's channel_mapping.py exactly):
+// Channels 0-11: 12 Sentinel-2 L2A reflectance bands (B01-B12)
+// Channel 12:    CLM (cloud mask — 1=clear/valid, 0=cloud/shadow)
+// Channels 13-16: sunZenith, sunAzimuth, viewZenith, viewAzimuth
 export const SENTINEL2_ALL_CHANNELS = [
   "B01",
   "B02",
@@ -176,13 +179,11 @@ export const SENTINEL2_ALL_CHANNELS = [
   "B09",
   "B11",
   "B12",
-  "dataMask",
   "CLM",
-  "CLP",
-  "sunAzimuthAngles",
   "sunZenithAngles",
-  "viewAzimuthMean",
-  "viewZenithMean"
+  "sunAzimuthAngles",
+  "viewZenithMean",
+  "viewAzimuthMean"
 ] as const;
 
 export const SENTINEL2_BAND_ORDER = SENTINEL2_ALL_CHANNELS;
@@ -194,8 +195,8 @@ export async function downloadSentinel2TIFF(
   index: number
 ): Promise<string> {
   // Validate channel configuration to prevent costly API errors
-  if (SENTINEL2_ALL_CHANNELS.length !== 19) {
-    throw new AppError(500, `Configuration error: Expected exactly 19 Sentinel-2 channels, but found ${SENTINEL2_ALL_CHANNELS.length}.`)
+  if (SENTINEL2_ALL_CHANNELS.length !== 17) {
+    throw new AppError(500, `Configuration error: Expected exactly 17 Sentinel-2 channels, but found ${SENTINEL2_ALL_CHANNELS.length}.`)
   }
 
   const token = await getCopernicusAccessToken()
@@ -253,7 +254,7 @@ function evaluatePixel(sample) {
     evalscript: evalscript
   }
 
-  console.log(`[Copernicus] Process API request prepared for acquisition: ${acquisitionDate} (19 channels)`)
+  console.log(`[Copernicus] Process API request prepared for acquisition: ${acquisitionDate} (17 channels)`)
   
   const response = await fetch("https://sh.dataspace.copernicus.eu/process/v1", {
     method: "POST",
