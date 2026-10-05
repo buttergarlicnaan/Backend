@@ -41,17 +41,25 @@ function readCopernicusConfig() {
 function readSupabaseConfig() {
   const url = process.env.SUPABASE_URL?.trim()
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  const inputBucket = process.env.SUPABASE_INPUT_BUCKET?.trim() || "geoenhance-inputs"
+  const outputBucket = process.env.SUPABASE_OUTPUT_BUCKET?.trim() || "geoenhance-outputs"
 
   if (!url || !serviceRoleKey) {
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required in environment variables")
   }
 
-  return { url, serviceRoleKey }
+  return { url, serviceRoleKey, inputBucket, outputBucket }
+}
+
+function readFastApiWorkerUrl(): string {
+  const raw = process.env.FASTAPI_WORKER_URL?.trim()
+  return raw && raw.length > 0 ? raw : "http://localhost:8001"
 }
 
 export const env = {
   port: readPort(),
   frontendOrigin: readFrontendOrigin(),
+  fastapiWorkerUrl: readFastApiWorkerUrl(),
   copernicus: {
     ...readCopernicusCredentials(),
     ...readCopernicusConfig()

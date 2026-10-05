@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express"
 import { AppError } from "../../middleware/errorHandler"
-import { getImageryForBounds, createEnhancementJob, getJobById } from "./imagery.service"
+import { getImageryForBounds, createEnhancementJob, getJobById, completeJob } from "./imagery.service"
 import type { BoundingBox } from "./imagery.types"
 
 function readCoordinate(value: unknown, name: string): number {
@@ -132,7 +132,7 @@ export async function enhance(
     
     const searchParams = { startDate, endDate, maxCloudCover }
 
-    const job = createEnhancementJob(bounds, searchParams)
+    const job = createEnhancementJob(bounds, searchParams, geometry)
     res.status(202).json(job)
   } catch (error) {
     next(error)
@@ -153,6 +153,28 @@ export async function getJob(
     }
 
     res.json(job)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function notifyJobComplete(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { jobId } = req.params
+    const { hrPsUrl, uncertaintyUrl, rawBaselineUrl, previewRgbUrl } = req.body || {}
+
+    const job = completeJob(jobId, {
+      hrPsUrl: hrPsUrl || null,
+      uncertaintyUrl: uncertaintyUrl || null,
+      rawBaselineUrl: rawBaselineUrl || null,
+      previewRgbUrl: previewRgbUrl || null
+    })
+
+    res.json({ success: true, job })
   } catch (error) {
     next(error)
   }

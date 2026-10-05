@@ -12,13 +12,29 @@ export type JobStatus =
   | "TIFFS_RETRIEVED"
   | "UPLOADING_INPUTS"
   | "INPUTS_UPLOADED"
+  | "INFERENCE_PROCESSING"
+  | "COMPLETED"
   | "FAILED"
 
+export interface TemporalFrame {
+  frameIndex: number
+  acquisitionId: string
+  timestamp: string
+  cloudCover: number | null
+  rawTiffUrl: string
+  previewUrl: string
+  storagePath: string
+}
+
 export interface JobResult {
-  originalPreviewUrl: string | null
-  enhancedPreviewUrl: string | null
-  originalDownloadUrl: string | null
-  enhancedDownloadUrl: string | null
+  hrPsUrl: string | null
+  uncertaintyUrl: string | null
+  rawBaselineUrl: string | null
+  previewRgbUrl: string | null
+  originalPreviewUrl?: string | null
+  enhancedPreviewUrl?: string | null
+  originalDownloadUrl?: string | null
+  enhancedDownloadUrl?: string | null
 }
 
 export interface Job {
@@ -30,6 +46,8 @@ export interface Job {
   modelInputCount?: number
   duplicatedInputs?: boolean
   inputStoragePaths?: string[]
+  temporalFrames?: TemporalFrame[]
+  aoi?: GeoJsonPolygon
   imagery?: Array<{
     id: string
     collection: string

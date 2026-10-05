@@ -162,8 +162,8 @@ export async function searchSentinel2L2A(
 import fs from "fs/promises"
 import path from "path"
 
-// PROVISIONAL: ML team has not yet confirmed final band order. Change only this configuration when the ML input contract is finalized.
-export const SENTINEL2_BAND_ORDER = [
+// 19-Channel ML Input Contract: 12 L2A optical bands, 3 masks/cloud, 4 geometry angles
+export const SENTINEL2_ALL_CHANNELS = [
   "B01",
   "B02",
   "B03",
@@ -175,8 +175,17 @@ export const SENTINEL2_BAND_ORDER = [
   "B8A",
   "B09",
   "B11",
-  "B12"
-];
+  "B12",
+  "dataMask",
+  "CLM",
+  "CLP",
+  "sunAzimuthAngles",
+  "sunZenithAngles",
+  "viewAzimuthMean",
+  "viewZenithMean"
+] as const;
+
+export const SENTINEL2_BAND_ORDER = SENTINEL2_ALL_CHANNELS;
 
 export async function downloadSentinel2TIFF(
   bounds: BoundingBox,
@@ -184,12 +193,9 @@ export async function downloadSentinel2TIFF(
   jobId: string,
   index: number
 ): Promise<string> {
-  // Validate band order configuration to prevent costly API errors
-  if (SENTINEL2_BAND_ORDER.length !== 12) {
-    throw new AppError(500, `Configuration error: Expected exactly 12 Sentinel-2 optical bands, but found ${SENTINEL2_BAND_ORDER.length}.`)
-  }
-  if (SENTINEL2_BAND_ORDER.includes("B10")) {
-    throw new AppError(500, "Configuration error: B10 is not available in Sentinel-2 L2A and must not be requested.")
+  // Validate channel configuration to prevent costly API errors
+  if (SENTINEL2_ALL_CHANNELS.length !== 19) {
+    throw new AppError(500, `Configuration error: Expected exactly 19 Sentinel-2 channels, but found ${SENTINEL2_ALL_CHANNELS.length}.`)
   }
 
   const token = await getCopernicusAccessToken()
@@ -197,17 +203,19 @@ export async function downloadSentinel2TIFF(
   const evalscript = `// VERSION=3
 function setup() {
   return {
-    input: ${JSON.stringify(SENTINEL2_BAND_ORDER)},
+    input: ${JSON.stringify(SENTINEL2_ALL_CHANNELS)},
     output: {
       id: "default",
-      bands: ${SENTINEL2_BAND_ORDER.length},
+      bands: ${SENTINEL2_ALL_CHANNELS.length},
       sampleType: "FLOAT32"
     }
   };
 }
 
 function evaluatePixel(sample) {
-  return [${SENTINEL2_BAND_ORDER.map(b => `sample.${b}`).join(", ")}];
+  return [
+    ${SENTINEL2_ALL_CHANNELS.map(b => `sample.${b}`).join(",\n    ")}
+  ];
 }`
 
   const body = {
@@ -231,8 +239,8 @@ function evaluatePixel(sample) {
       ]
     },
     output: {
-      width: 153,
-      height: 163,
+      width: 158,
+      height: 159,
       responses: [
         {
           identifier: "default",
@@ -245,7 +253,7 @@ function evaluatePixel(sample) {
     evalscript: evalscript
   }
 
-  console.log(`[Copernicus] Process API request prepared for acquisition: ${acquisitionDate}`)
+  console.log(`[Copernicus] Process API request prepared for acquisition: ${acquisitionDate} (19 channels)`)
   
   const response = await fetch("https://sh.dataspace.copernicus.eu/process/v1", {
     method: "POST",
@@ -260,9 +268,8 @@ function evaluatePixel(sample) {
     const errText = await response.text()
     console.error(`[Copernicus] Process HTTP error: ${response.status}`, errText)
     
-    // Attempt to provide a clear error message if the AOI is too large
     if (errText.toLowerCase().includes("resolution") || errText.toLowerCase().includes("pixel")) {
-      throw new Error(`The selected area is too large for the requested 153x163 dimensions, exceeding Copernicus API resolution limits. Please select a smaller area.`)
+      throw new Error(`The selected area is too large for the requested dimensions, exceeding Copernicus API resolution limits. Please select a smaller area.`)
     }
     
     throw new Error(`Process API failed: ${response.status} - ${errText}`)
@@ -283,8 +290,102 @@ function evaluatePixel(sample) {
   const filePath = path.join(dirPath, fileName)
   
   await fs.writeFile(filePath, buffer)
-  console.log(`[Copernicus] TIFF saved: ${filePath}`)
+  console.log(`[Copernicus] 19-band TIFF saved: ${filePath}`)
   console.log(`[Copernicus] TIFF size: ${buffer.length} bytes`)
   
+  return filePath
+}
+
+export async function downloadSentinel2Preview(
+  bounds: BoundingBox,
+  acquisitionDate: string,
+  jobId: string,
+  index: number
+): Promise<string> {
+  const token = await getCopernicusAccessToken()
+
+  const evalscript = `// VERSION=3
+function setup() {
+  return {
+    input: ["B02", "B03", "B04", "dataMask"],
+    output: {
+      id: "default",
+      bands: 4,
+      sampleType: "AUTO"
+    }
+  };
+}
+
+function evaluatePixel(sample) {
+  return [
+    Math.min(1.0, 2.5 * sample.B04),
+    Math.min(1.0, 2.5 * sample.B03),
+    Math.min(1.0, 2.5 * sample.B02),
+    sample.dataMask
+  ];
+}`
+
+  const body = {
+    input: {
+      bounds: {
+        bbox: [bounds.west, bounds.south, bounds.east, bounds.north],
+        properties: {
+          crs: "http://www.opengis.net/def/crs/EPSG/0/4326"
+        }
+      },
+      data: [
+        {
+          type: "sentinel-2-l2a",
+          dataFilter: {
+            timeRange: {
+              from: acquisitionDate,
+              to: acquisitionDate
+            }
+          }
+        }
+      ]
+    },
+    output: {
+      width: 512,
+      height: 512,
+      responses: [
+        {
+          identifier: "default",
+          format: {
+            type: "image/png"
+          }
+        }
+      ]
+    },
+    evalscript: evalscript
+  }
+
+  const response = await fetch("https://sh.dataspace.copernicus.eu/process/v1", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    console.warn(`[Copernicus] Preview generation warning: ${response.status} - ${errText}`)
+    return ""
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+
+  const dirPath = path.join(process.cwd(), "temporary", "jobs", jobId, "imagery")
+  await fs.mkdir(dirPath, { recursive: true })
+
+  const fileName = `preview_${String(index).padStart(2, '0')}.png`
+  const filePath = path.join(dirPath, fileName)
+
+  await fs.writeFile(filePath, buffer)
+  console.log(`[Copernicus] Frame preview saved: ${filePath}`)
+
   return filePath
 }

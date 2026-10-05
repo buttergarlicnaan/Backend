@@ -8,8 +8,8 @@ import numpy as np
 
 TIFF_PATH = r"D:\SIH\Version1\geoenhance\backend\temporary\jobs\a289a4e9-14fd-4c4a-8d8e-d05327f189f2\imagery\01.tif"
 
-# Expected GeoEnhance / ML band order
-BAND_ORDER = [
+# Expected GeoEnhance / ML 19-channel input band order
+INPUT_BAND_ORDER_19 = [
     "B01",
     "B02",
     "B03",
@@ -22,7 +22,19 @@ BAND_ORDER = [
     "B09",
     "B11",
     "B12",
+    "dataMask",
+    "CLM",
+    "CLP",
+    "sunAzimuthAngles",
+    "sunZenithAngles",
+    "viewAzimuthMean",
+    "viewZenithMean",
 ]
+
+# Expected 4-channel HR_ps model output
+HR_PS_BAND_ORDER_4 = ["Red", "Green", "Blue", "NIR"]
+
+BAND_ORDER = INPUT_BAND_ORDER_19
 
 
 def get_tag(page, name):
@@ -109,14 +121,19 @@ with tifffile.TiffFile(TIFF_PATH) as tif:
         print(f"  NaN count:  {np.sum(np.isnan(values))}")
         print(f"  Inf count:  {np.sum(np.isinf(values))}")
 
-    print("\n[ML INPUT CONTRACT]")
-    print("Number of input TIFFs: 8")
-    print("Bands per TIFF:", len(BAND_ORDER))
-    print("Expected width: 153")
-    print("Expected height: 163")
-    print("Expected dtype: FLOAT32")
-    print("Expected band order:")
-    print(" -> ".join(BAND_ORDER))
+    print("\n[ML CONTRACT]")
+    if data.ndim == 3 and data.shape[2] == 4:
+        print("Detected format: HR_ps (Super-Resolved Output)")
+        print("Expected shape: (1054, 1054, 4)")
+        print("Expected channels: Red, Green, Blue, NIR")
+    else:
+        print("Detected format: Multi-temporal Input Frame")
+        print("Number of input TIFFs per job: 8")
+        print("Bands per TIFF:", len(BAND_ORDER))
+        print("Expected shape: (~159, 158, 19)")
+        print("Expected dtype: FLOAT32")
+        print("Expected band order:")
+        print(" -> ".join(BAND_ORDER))
 
 print("\n" + "=" * 70)
 print("End of Verification Report")

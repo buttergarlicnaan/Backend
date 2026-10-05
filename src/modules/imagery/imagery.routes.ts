@@ -1,12 +1,10 @@
 import { Router } from "express"
-import { enhance, getJob } from "./imagery.controller"
+import { enhance, getJob, notifyJobComplete } from "./imagery.controller"
 
 const router = Router()
 
-// processArea from imagery.controller will be registered here
-// when the enhancement API is added. Copernicus is not implemented yet.
-
 router.post("/enhance", enhance)
 router.get("/jobs/:jobId", getJob)
+router.post("/jobs/:jobId/complete", notifyJobComplete)
 
 export default router
